@@ -1,0 +1,146 @@
+
+---
+title: "ARIMA Model Analysis of Monthly Revenue"
+author: "Md. Ariful Islam"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Introduction
+
+This report presents a time series analysis of monthly revenue data using the ARIMA model. The analysis includes data preparation, exploratory visualization, stationarity checks, model identification using ACF and PACF, model fitting, and forecasting future revenue trends.
+
+# Libraries and Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(lubridate)
+library(forecast)
+library(tseries)
+```
+
+# Data Preparation
+
+```{r}
+df <- read_csv("sales_data.csv")
+df$Date <- ymd(df$Date)
+
+monthly_revenue <- df %>%
+  group_by(Date = floor_date(Date, "month")) %>%
+  summarise(Revenue = sum(Revenue, na.rm = TRUE))
+
+head(monthly_revenue)
+```
+
+# Exploratory Data Analysis
+
+We start by visualizing the monthly revenue to detect any visible trend or seasonality.
+
+```{r}
+ggplot(monthly_revenue, aes(x = Date, y = Revenue)) +
+  geom_line(color = "steelblue") +
+  labs(title = "Monthly Revenue Over Time", x = "Date", y = "Revenue") +
+  theme_minimal()
+```
+
+# Stationarity Test
+
+We apply the Augmented Dickey-Fuller (ADF) test to check whether the revenue time series is stationary.
+
+```{r}
+adf_test <- adf.test(monthly_revenue$Revenue, alternative = "stationary")
+adf_test
+```
+
+# Autocorrelation and Partial Autocorrelation Plots
+
+These plots help determine the AR and MA terms of the ARIMA model.
+
+```{r}
+acf(monthly_revenue$Revenue, main = "ACF - Monthly Revenue")
+pacf(monthly_revenue$Revenue, main = "PACF - Monthly Revenue")
+```
+
+# Differencing the Series
+
+To achieve stationarity, we perform first-order differencing and re-run the ADF test.
+
+```{r}
+diff_revenue <- diff(monthly_revenue$Revenue)
+adf_test_diff <- adf.test(diff_revenue, alternative = "stationary")
+adf_test_diff
+```
+
+# Model Building
+
+We use the ARIMA(1,1,1) model based on the observed ACF and PACF plots and stationarity analysis.
+
+```{r}
+revenue_ts <- ts(monthly_revenue$Revenue, frequency = 12)
+model <- Arima(revenue_ts, order = c(1, 1, 1))
+summary(model)
+```
+
+# Forecasting
+
+The model is used to forecast the next 6 months of revenue. The forecast is displayed with a 95% confidence interval.
+
+```{r}
+forecast_model <- forecast(model, h = 6)
+autoplot(forecast_model) +
+  labs(title = "ARIMA(1,1,1) Forecast for Monthly Revenue", x = "Time", y = "Revenue") +
+  theme_minimal()
+```
+
+# Conclusion
+
+## Interpretation of the Forecast Plot
+
+While the ARIMA(1,1,1) model provides a useful short-term forecast, you may notice that the forecasted values begin to fluctuate erratically after a few months. This behavior is due to several factors:
+
+- **No seasonality handling**: The ARIMA model used here does not capture seasonal patterns (e.g., monthly cycles), which leads to unstable predictions as it projects further into the future.
+- **Effect of differencing**: Differencing removes long-term trends and can exaggerate fluctuations in the absence of strong signals.
+- **Cumulative uncertainty**: Each new prediction is based on previous forecasts, so errors compound and cause wide and sometimes sharp changes.
+- **Autoregressive and Moving Average terms**: In the absence of strong structure, AR and MA components may reflect short-term noise rather than trend.
+
+To address this, a Seasonal ARIMA (SARIMA) or models like ETS or Prophet could be more appropriate if your data includes seasonal behavior.
+
+
+
+The ARIMA(1,1,1) model demonstrates a good fit for forecasting monthly revenue data. The model's forecasts provide useful insights for financial planning and trend analysis.
+
+
+# SARIMA Model
+
+To account for potential seasonality in the data (e.g., monthly effects), we fit a Seasonal ARIMA (SARIMA) model. This allows the model to capture repeating seasonal patterns in addition to short-term dynamics.
+
+```{r}
+# Fit SARIMA model with seasonal components (6 months per year)
+sarima_model <- auto.arima(revenue_ts, seasonal = TRUE)
+summary(sarima_model)
+```
+
+## Forecasting with SARIMA
+
+We now generate a 6-month forecast using the SARIMA model.
+
+```{r}
+sarima_forecast <- forecast(sarima_model, h = 6)
+
+# Plot SARIMA forecast
+autoplot(sarima_forecast) +
+  labs(title = "SARIMA(1,1,1)(1,1,1)[6] Forecast for Monthly Revenue",
+       x = "Time", y = "Revenue") +
+  theme_minimal()
+```
+
+## Interpretation
+
+The SARIMA forecast generally provides a smoother and more realistic projection than the ARIMA model, especially for data with seasonal characteristics. In this model:
+
+- The **seasonal autoregressive (SAR)** and **seasonal moving average (SMA)** terms capture patterns that repeat every 6 months.
+- The forecast tends to **avoid sharp fluctuations** that were observed in the ARIMA forecast after a few months.
+- The **confidence intervals** also tend to be tighter if the seasonal pattern is strong, improving reliability.
+
+SARIMA is better suited for financial and retail time series, where patterns like monthly or quarterly seasonality are common.
